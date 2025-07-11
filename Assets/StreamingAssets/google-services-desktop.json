@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "532350159171",
+    "project_id": "skellies-486dc",
+    "storage_bucket": "skellies-486dc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532350159171:android:d93ae76802e5d6ed2547f6",
+        "android_client_info": {
+          "package_name": "com.sansouciboss.Skellies"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "532350159171-nd4sgpfelesof9qhvmt95tne4vpk6le9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sansouciboss.Skellies",
+            "certificate_hash": "6c372bb11eda114c7a845c7aa87583951559493c"
+          }
+        },
+        {
+          "client_id": "532350159171-n6uhc27bcn414q224o9m5ihl3qobi7oq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBaOQtZEg_dsZmWikOv2FxJf3cIhbJQoZ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "532350159171-n6uhc27bcn414q224o9m5ihl3qobi7oq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

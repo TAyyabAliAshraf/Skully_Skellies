@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@string/gcm_defaultSenderId,@string/google_storage_bucket,@string/project_id,@string/google_api_key,@string/google_crash_reporting_api_key,@string/google_app_id,@string/default_android_client_id,@string/default_web_client_id">
+  <string name="gcm_defaultSenderId" translatable="false">532350159171</string>
+  <string name="google_storage_bucket" translatable="false">skellies-486dc.firebasestorage.app</string>
+  <string name="project_id" translatable="false">skellies-486dc</string>
+  <string name="google_api_key" translatable="false">AIzaSyBaOQtZEg_dsZmWikOv2FxJf3cIhbJQoZ4</string>
+  <string name="google_crash_reporting_api_key" translatable="false">AIzaSyBaOQtZEg_dsZmWikOv2FxJf3cIhbJQoZ4</string>
+  <string name="google_app_id" translatable="false">1:532350159171:android:d93ae76802e5d6ed2547f6</string>
+  <string name="default_android_client_id" translatable="false">532350159171-nd4sgpfelesof9qhvmt95tne4vpk6le9.apps.googleusercontent.com</string>
+  <string name="default_web_client_id" translatable="false">532350159171-n6uhc27bcn414q224o9m5ihl3qobi7oq.apps.googleusercontent.com</string>
+</resources>

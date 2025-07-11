@@ -1,23 +1,28 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class SceneHandler : MonoBehaviour
 {
-
-
-    public void ChangeScene()
+    // Load a scene by build index
+    public void ChangeScene(int sceneIndex)
     {
-
-
-    }
-
-    public void ChangeScene(int i)
-    {
-
-
+        SceneManager.LoadScene(sceneIndex);
     }
 
 
+    // Load a scene asynchronously by index (optional)
+    public void ChangeSceneAsync(int sceneIndex)
+    {
+        StartCoroutine(LoadSceneAsync(sceneIndex));
+    }
 
+    private IEnumerator LoadSceneAsync(int sceneIndex)
+    {
+        AsyncOperation operation = SceneManager.LoadSceneAsync(sceneIndex);
+        while (!operation.isDone)
+        {
+            yield return null;
+        }
+    }
 }
