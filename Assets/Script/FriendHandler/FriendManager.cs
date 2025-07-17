@@ -26,6 +26,8 @@ public class FriendManager : MonoBehaviour
     public TMP_InputField searchInput;
     public Button sendRequestButton;
 
+    public TMP_Text FindRiendDialogTxt;
+
     private void Awake()
     {
         if (Instance == null)
@@ -33,11 +35,11 @@ public class FriendManager : MonoBehaviour
             Instance = this;
             DontDestroyOnLoad(gameObject);
         }
-        else
+        /*else
         {
             Destroy(gameObject);
             return;
-        }
+        }*/
 
         auth = FirebaseAuth.DefaultInstance;
         db = FirebaseFirestore.DefaultInstance;
@@ -57,6 +59,28 @@ public class FriendManager : MonoBehaviour
         {
             await SearchAndSendFriendRequest(username);
         }
+    }
+
+    public void eraseDialogTxt()
+    {
+        FindRiendDialogTxt.text = string.Empty;
+    }
+
+    public void OnRequestTab()
+    {
+        searchInput.text = string.Empty;
+       _ = RefreshFriendRequests();
+    }
+
+    public void OnFriendsTab()
+    {
+        searchInput.text = string.Empty;
+        _ = RefreshFriendList();
+    }
+
+    public void OnFindTab()
+    {
+
     }
 
     public async Task RefreshFriendList()
@@ -171,6 +195,7 @@ public class FriendManager : MonoBehaviour
         if (doc == null)
         {
             Debug.LogWarning("User not found.");
+            FindRiendDialogTxt.text = "User not found.";
             return;
         }
 
@@ -179,6 +204,7 @@ public class FriendManager : MonoBehaviour
         if (targetUID == myUID)
         {
             Debug.LogWarning("Cannot add yourself.");
+            FindRiendDialogTxt.text = "Cannot add yourself.";
             return;
         }
 
@@ -186,6 +212,7 @@ public class FriendManager : MonoBehaviour
         if (friendCheck.Exists)
         {
             Debug.LogWarning("Already friends.");
+            FindRiendDialogTxt.text = "Already friends.";
             return;
         }
 
@@ -194,6 +221,7 @@ public class FriendManager : MonoBehaviour
         if (reqCheck.Exists)
         {
             Debug.LogWarning("Request already sent.");
+            FindRiendDialogTxt.text = "Request already sent.";
             return;
         }
 
@@ -206,5 +234,6 @@ public class FriendManager : MonoBehaviour
 
         await db.Collection("friend_requests").Document(requestDocId).SetAsync(requestData);
         Debug.Log("Friend request sent!");
+        FindRiendDialogTxt.text = "Friend request sent!";
     }
 }

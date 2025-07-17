@@ -21,6 +21,10 @@ public class RankingManager : MonoBehaviour
     public Button worldRankButton;
     public Button friendRankButton;
 
+    [Header("Colors")]
+    public Color activeTabColor = Color.white;
+    public Color inactiveTabColor = Color.gray;
+
     private void Awake()
     {
         auth = FirebaseAuth.DefaultInstance;
@@ -34,17 +38,19 @@ public class RankingManager : MonoBehaviour
         friendRankButton.onClick.AddListener(OnFriendRankClicked);
     }
 
-    private void OnWorldRankClicked()
+    public void OnWorldRankClicked()
     {
-        worldRankContent.gameObject.SetActive(true);
-        friendRankContent.gameObject.SetActive(false);
+        worldRankContent.parent.transform.parent.gameObject.SetActive(true);
+        friendRankContent.parent.transform.parent.gameObject.SetActive(false);
+        SetTabColors(worldRankButton);
         _ = LoadTop10GlobalRank();
     }
 
     private void OnFriendRankClicked()
     {
-        friendRankContent.gameObject.SetActive(true);
-        worldRankContent.gameObject.SetActive(false);
+        friendRankContent.parent.transform.parent.gameObject.SetActive(true);
+        worldRankContent.parent.transform.parent.gameObject.SetActive(false);
+        SetTabColors(friendRankButton);
         _ = LoadTop10FriendRank();
     }
 
@@ -121,5 +127,11 @@ public class RankingManager : MonoBehaviour
         {
             Destroy(child.gameObject);
         }
+    }
+
+    private void SetTabColors(Button activeButton)
+    {
+        worldRankButton.GetComponent<Image>().color = (activeButton == worldRankButton) ? activeTabColor : inactiveTabColor;
+        friendRankButton.GetComponent<Image>().color = (activeButton == friendRankButton) ? activeTabColor : inactiveTabColor;
     }
 }
