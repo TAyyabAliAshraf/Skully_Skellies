@@ -47,6 +47,27 @@ MonoBehaviour:
   - EndTurnRPC
   - RPC_ResetSpawnedPlayers
   - RPC_EndTurn
+  - RPC_KnockOutOfSkelly
+  - RPC_UpdatePosition
+  - RPC_UpdateSkellyStatus
+  - FreeFromSkelly
+  - MoveToBox
+  - SetStuckInSkelly
+  - ResetToSpawn
+  - SyncHighestBoxReached
+  - ResetFlickedStatus
+  - SyncVisitedBoxes
+  - DisplayFeedbackRPC
+  - RPC_DeclareWinner
+  - RPC_SyncProgress
+  - RPC_PlayerWon
+  - SyncBoxState
+  - UpdateCurrentBox
+  - RPC_AnnounceWinner
+  - RPC_NotifyCapStopped
+  - RPC_UpdateBoxStatus
+  - RPC_UpdateNextBoxText
+  - RPC_AdvanceBox
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1

@@ -22,6 +22,14 @@ public class GameManager : MonoBehaviourPunCallbacks
         {
             Instance = this;
             photonView = GetComponent<PhotonView>();
+            if (photonView == null)
+            {
+                Debug.LogError("PhotonView component missing on GameManager!");
+            }
+            else
+            {
+                Debug.Log($"GameManager initialized with PhotonView ID: {photonView.ViewID}");
+            }
             DontDestroyOnLoad(gameObject);
         }
         else
@@ -37,7 +45,8 @@ public class GameManager : MonoBehaviourPunCallbacks
             InitializeGame();
         }
     }
-    bool spawned =false;
+
+    bool spawned = false;
     void Update()
     {
         if (spawned)
@@ -210,9 +219,11 @@ public class GameManager : MonoBehaviourPunCallbacks
             }
         }
     }
+
     [PunRPC]
     private void RPC_EndTurn(int actorNumber)
     {
+        Debug.Log($"RPC_EndTurn called for player {actorNumber} on GameManager PhotonView ID: {photonView.ViewID}");
         if (PhotonNetwork.IsMasterClient)
         {
             if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TurnManager.TURN_KEY, out object turnObj) && (int)turnObj == actorNumber)
