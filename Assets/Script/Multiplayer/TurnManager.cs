@@ -3,12 +3,14 @@ using Photon.Realtime;
 using System.Linq;
 using ExitGames.Client.Photon;
 using UnityEngine;
+using System.Collections.Generic;
 
 public class TurnManager : MonoBehaviourPunCallbacks
 {
     public static TurnManager Instance;
     public const string TURN_KEY = "TurnPlayer";
     public const string TEAM_KEY = "PlayerTeam";
+    private HashSet<int> lostTurnPlayers = new HashSet<int>(); // Tracks players who lost their turn
 
     void Awake()
     {
@@ -127,7 +129,8 @@ public class TurnManager : MonoBehaviourPunCallbacks
             if (nextIndex <= currentIndex && players.Count > 1) // End of cycle
             {
                 GameManager.Instance.ResetSpawnedPlayers();
-                Debug.Log("Full turn cycle completed, resetting spawnedPlayers.");
+                lostTurnPlayers.Clear(); // Clear lost turns at end of cycle
+                Debug.Log("Full turn cycle completed, resetting spawnedPlayers and lostTurnPlayers.");
             }
 
             SetTurn(nextTurn);
@@ -163,10 +166,30 @@ public class TurnManager : MonoBehaviourPunCallbacks
             return players[0].ActorNumber;
         }
 
-        // Get next index cyclically
-        int nextIndex = (currentIndex + 1) % players.Count;
-        Debug.Log($"Current turn: {currentTurn}, Next turn: {players[nextIndex].ActorNumber}");
-        return players[nextIndex].ActorNumber;
+        // Find the next player, skipping those who lost their turn
+        int nextIndex = currentIndex;
+        int attempts = 0;
+        do
+        {
+            nextIndex = (nextIndex + 1) % players.Count;
+            int nextPlayer = players[nextIndex].ActorNumber;
+            attempts++;
+            if (!lostTurnPlayers.Contains(nextPlayer))
+            {
+                Debug.Log($"Current turn: {currentTurn}, Next turn: {nextPlayer}");
+                return nextPlayer;
+            }
+            Debug.Log($"Skipping player {nextPlayer} due to lost turn");
+        } while (attempts < players.Count);
+
+        Debug.LogWarning("All players have lost their turn, falling back to first player.");
+        return players[0].ActorNumber;
+    }
+
+    public void MarkPlayerLostTurn(int actorNumber)
+    {
+        lostTurnPlayers.Add(actorNumber);
+        Debug.Log($"Player {actorNumber} added to lostTurnPlayers");
     }
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
@@ -174,6 +197,8 @@ public class TurnManager : MonoBehaviourPunCallbacks
         base.OnPlayerLeftRoom(otherPlayer);
         if (PhotonNetwork.IsMasterClient)
         {
+            // Remove from lostTurnPlayers if player leaves
+            lostTurnPlayers.Remove(otherPlayer.ActorNumber);
             // If the current turn player left, advance to the next player
             if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TURN_KEY, out object turnObj) && (int)turnObj == otherPlayer.ActorNumber)
             {

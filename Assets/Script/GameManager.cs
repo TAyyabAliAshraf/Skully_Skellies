@@ -2,7 +2,6 @@ using ExitGames.Client.Photon;
 using Photon.Pun;
 using Photon.Realtime;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 public class GameManager : MonoBehaviourPunCallbacks
@@ -10,7 +9,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     public static GameManager Instance;
     public GameObject board;
     public GameObject bottleCapPrefab;
-    public Transform[] spawnPoints;
+    public Transform[] spawnPoints; // Made public for CapMovement access
 
     private Dictionary<int, bool> spawnedPlayers = new Dictionary<int, bool>();
     private PhotonView photonView;
@@ -237,7 +236,6 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
     }
 
-    // New method to reset spawnedPlayers after a full turn cycle
     public void ResetSpawnedPlayers()
     {
         if (PhotonNetwork.IsMasterClient)
