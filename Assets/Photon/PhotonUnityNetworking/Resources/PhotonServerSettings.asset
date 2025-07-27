@@ -68,6 +68,10 @@ MonoBehaviour:
   - RPC_UpdateBoxStatus
   - RPC_UpdateNextBoxText
   - RPC_AdvanceBox
+  - RPC_ResetToBoxOne
+  - RPC_SetLoseNextTurn
+  - RPC_LoseTurn
+  - RPC_ResetProgress
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1
