@@ -8,6 +8,8 @@ TagManager:
   - BoardBox
   - BottleCap
   - BoxLine
+  - Skelly
+  - SkellyBox
   layers:
   - Default
   - TransparentFX

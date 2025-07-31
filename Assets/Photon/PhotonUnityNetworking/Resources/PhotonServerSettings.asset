@@ -72,6 +72,19 @@ MonoBehaviour:
   - RPC_SetLoseNextTurn
   - RPC_LoseTurn
   - RPC_ResetProgress
+  - RPC_AdvanceBoxOnOpponentHit
+  - RPC_SyncBoxEntered
+  - RPC_UpdateTeamWin
+  - RPC_ForceUIUpdate
+  - RPC_AnnounceKiller
+  - RPC_ApplyCollisionForce
+  - RPC_EnterSkelly
+  - RPC_ExitSkelly
+  - RPC_UpdateSkellyTurn
+  - RPC_UpdateWrongBoxTurn
+  - RPC_NotifyGameStalled
+  - RPC_SetTurn
+  - RPC_DecrementSkellyTurn
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1

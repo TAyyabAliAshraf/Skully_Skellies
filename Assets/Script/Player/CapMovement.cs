@@ -22,8 +22,9 @@ public class CapMovement : MonoBehaviourPunCallbacks
     private readonly int maxBox = 13; // Maximum box number
     private bool hasWon = false; // Tracks if the player has won
     private int currentBoxEntered = 0; // Tracks the box the cap is currently in
-    private bool touchedBoxLine = false; // Tracks if cap touched a "BoxLine" during movement
+    private bool isTouchingBoxLine = false; // Tracks if cap is currently touching a "BoxLine"
     private bool hasResetThisFlick = false; // Prevents multiple resets in one flick
+    private bool collidedWithCap = false; // Tracks if cap collided with another cap
 
     private Rigidbody2D rb;
     private bool isDragging = false;
@@ -74,7 +75,8 @@ public class CapMovement : MonoBehaviourPunCallbacks
             dragStartPos = worldMousePos;
             isDragging = true;
             rb.velocity = Vector2.zero;
-            touchedBoxLine = false; // Reset line collision flag on new flick
+            isTouchingBoxLine = false; // Reset line collision state on new flick
+            collidedWithCap = false; // Reset cap collision state on new flick
             hasResetThisFlick = false; // Reset flag on new flick
 
             if (powerArrowSprite != null)
@@ -137,26 +139,38 @@ public class CapMovement : MonoBehaviourPunCallbacks
         if (allStopped)
         {
             CancelInvoke("CheckAllCapsStopped");
-            Debug.Log($"CheckAllCapsStopped: currentBox={currentBox}, currentBoxEntered={currentBoxEntered}, hasWon={hasWon}, touchedBoxLine={touchedBoxLine}, position={transform.position}, capCount={caps.Length}");
-            // Check if this cap is in its target box and stopped
-            if (!hasWon && currentBoxEntered == currentBox)
+            Debug.Log($"CheckAllCapsStopped: currentBox={currentBox}, currentBoxEntered={currentBoxEntered}, hasWon={hasWon}, isTouchingBoxLine={isTouchingBoxLine}, collidedWithCap={collidedWithCap}, position={transform.position}, capCount={caps.Length}");
+
+            // Apply game rules only when all caps have stopped
+            if (!hasWon)
             {
-                int boxesToAdvance = touchedBoxLine ? 1 : 3; // Advance 3 boxes if no line was touched, else 1
-                Debug.Log($"Advancing {boxesToAdvance} box(es) for player {PhotonNetwork.LocalPlayer.ActorNumber} from box {currentBox}");
-                photonView.RPC("RPC_AdvanceBox", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber, boxesToAdvance);
-                currentBoxEntered = 0; // Reset after advancing
+                if (collidedWithCap && currentBox == 1)
+                {
+                    // Rule: Hit another cap while on box 1, reset progress
+                    Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} hit another cap while on box 1, resetting position and progress");
+                    photonView.RPC("RPC_ResetProgress", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber);
+                }
+                else if (currentBoxEntered == currentBox)
+                {
+                    // Rule: Landed in the correct box
+                    int boxesToAdvance = isTouchingBoxLine ? 1 : 3; // Advance 3 boxes if not touching a line, else 1
+                    Debug.Log($"Advancing {boxesToAdvance} box(es) for player {PhotonNetwork.LocalPlayer.ActorNumber} from box {currentBox}");
+                    photonView.RPC("RPC_AdvanceBox", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber, boxesToAdvance);
+                    currentBoxEntered = 0; // Reset after advancing
+                }
+                else if (currentBoxEntered != 0)
+                {
+                    // Rule: Landed in wrong box, lose next turn
+                    Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} landed in wrong box {currentBoxEntered} (target: {currentBox}), losing next turn");
+                    photonView.RPC("RPC_LoseTurn", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber);
+                    currentBoxEntered = 0; // Reset after checking
+                }
+                else
+                {
+                    currentBoxEntered = 0; // Reset if not advancing
+                }
             }
-            else if (!hasWon && currentBoxEntered != 0)
-            {
-                // Landed in wrong box, lose next turn
-                Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} landed in wrong box {currentBoxEntered} (target: {currentBox}), losing next turn");
-                photonView.RPC("RPC_LoseTurn", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber);
-                currentBoxEntered = 0; // Reset after checking
-            }
-            else
-            {
-                currentBoxEntered = 0; // Reset if not advancing
-            }
+
             if (GameManager.Instance == null || GameManager.Instance.photonView == null)
             {
                 Debug.LogError("GameManager or its PhotonView is null! Cannot send RPC_EndTurn.");
@@ -177,11 +191,11 @@ public class CapMovement : MonoBehaviourPunCallbacks
             currentBoxEntered = boxNumber;
             Debug.Log($"Cap entered box {boxNumber}, current target: {currentBox}, position: {transform.position}, bounds: {other.bounds}");
         }
-        // Track if cap touches a line
+        // Track if cap is touching a BoxLine
         else if (other.CompareTag("BoxLine"))
         {
-            touchedBoxLine = true;
-            Debug.Log($"Cap touched BoxLine at position: {transform.position}");
+            isTouchingBoxLine = true;
+            Debug.Log($"Cap entered BoxLine at position: {transform.position}");
         }
     }
 
@@ -198,18 +212,23 @@ public class CapMovement : MonoBehaviourPunCallbacks
                 currentBoxEntered = 0;
             }
         }
+        // Clear isTouchingBoxLine if the cap exits the BoxLine
+        else if (other.CompareTag("BoxLine"))
+        {
+            isTouchingBoxLine = false;
+            Debug.Log($"Cap exited BoxLine at position: {transform.position}");
+        }
     }
 
     void OnCollisionEnter2D(Collision2D collision)
     {
         if (!photonView.IsMine || hasWon || hasResetThisFlick || !TurnManager.Instance.IsMyTurn()) return;
 
-        // Check for collision with another cap
-        if (collision.gameObject.CompareTag("BottleCap") && currentBox == 1)
+        // Track collision with another cap
+        if (collision.gameObject.CompareTag("BottleCap"))
         {
-            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} hit another cap while on box 1 during their turn, resetting position and progress");
-            photonView.RPC("RPC_ResetProgress", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber);
-            hasResetThisFlick = true; // Prevent multiple resets
+            collidedWithCap = true;
+            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} collided with another cap at position: {transform.position}");
         }
     }
 

@@ -13,7 +13,7 @@ public class UserManager : MonoBehaviour
 
     private FirebaseAuth auth;
     private FirebaseFirestore db;
-    private FirebaseUser firebaseUser;
+    public FirebaseUser firebaseUser;
 
     [Header("User Data")]
     public string Username;
@@ -21,11 +21,11 @@ public class UserManager : MonoBehaviour
     public List<bool> Caps = new List<bool>();
 
     private GoogleSignInConfiguration configuration;
-    private string webClientId = "532350159171-n6uhc27bcn414q224o9m5ihl3qobi7oq.apps.googleusercontent.com"; // ← your WebClientId
+    private string webClientId = "532350159171-n6uhc27bcn414q224o9m5ihl3qobi7oq.apps.googleusercontent.com"; // Replace with your WebClientId
 
     private void Awake()
     {
-        // Singleton
+        // Singleton pattern
         if (Instance == null)
         {
             Instance = this;
@@ -37,7 +37,7 @@ public class UserManager : MonoBehaviour
             return;
         }
 
-        // Set up Google config
+        // Google config
         configuration = new GoogleSignInConfiguration
         {
             WebClientId = webClientId,
@@ -58,26 +58,28 @@ public class UserManager : MonoBehaviour
                 auth = FirebaseAuth.DefaultInstance;
                 db = FirebaseFirestore.DefaultInstance;
 
-                Debug.Log("Firebase initialized.");
+                Debug.Log("✅ Firebase initialized.");
 
-                // 🔁 Start Google Sign-In process
                 GoogleSignIn.Configuration = configuration;
-                GoogleSignIn.DefaultInstance.SignOut(); // optional: force refresh
-                GoogleSignIn.DefaultInstance.SignInSilently().ContinueWith(OnGoogleSignIn);
+
+                // Try silent sign-in
+                GoogleSignIn.DefaultInstance.SignIn().ContinueWith(OnGoogleSignIn);
             }
             else
             {
-                Debug.LogError("Firebase dependency error: " + task.Result);
+                Debug.LogError("❌ Firebase dependency error: " + task.Result);
             }
         });
     }
 
     private void OnGoogleSignIn(Task<GoogleSignInUser> task)
     {
-        if (task.IsFaulted || task.IsCanceled)
+        if (task.IsCanceled || task.IsFaulted)
         {
-            Debug.LogWarning("[UserManager] Silent sign-in failed. Trying interactive sign-in...");
+            Debug.LogWarning(" Silent sign-in failed: " + task.Exception);
+            Debug.Log("Trying interactive login...");
 
+            GoogleSignIn.DefaultInstance.SignOut(); // Force reset
             GoogleSignIn.DefaultInstance.SignIn().ContinueWith(OnGoogleSignInFinished);
             return;
         }
@@ -85,11 +87,12 @@ public class UserManager : MonoBehaviour
         HandleGoogleUser(task.Result);
     }
 
+
     private void OnGoogleSignInFinished(Task<GoogleSignInUser> task)
     {
-        if (task.IsFaulted || task.IsCanceled)
+        if (task.IsCanceled || task.IsFaulted)
         {
-            Debug.LogError("[UserManager] Google Sign-In failed: " + task.Exception?.Flatten().InnerException?.Message);
+            Debug.LogError(" Google Sign-In failed: " + task.Exception?.Flatten().InnerException?.Message);
             return;
         }
 
@@ -98,7 +101,13 @@ public class UserManager : MonoBehaviour
 
     private void HandleGoogleUser(GoogleSignInUser googleUser)
     {
-        Debug.Log("Google Sign-In success: " + googleUser.DisplayName);
+        if (googleUser == null)
+        {
+            Debug.LogError(" GoogleSignInUser is null.");
+            return;
+        }
+
+        Debug.Log(" Google Sign-In success: " + googleUser.DisplayName);
 
         Credential credential = GoogleAuthProvider.GetCredential(googleUser.IdToken, null);
 
@@ -107,12 +116,12 @@ public class UserManager : MonoBehaviour
             if (authTask.IsCompleted && !authTask.IsFaulted)
             {
                 firebaseUser = authTask.Result;
-                Debug.Log("Firebase Sign-In success: " + firebaseUser.UserId);
+                Debug.Log(" Firebase Sign-In success: " + firebaseUser.UserId);
                 LoadOrCreateUserData();
             }
             else
             {
-                Debug.LogError("Firebase Auth failed: " + authTask.Exception);
+                Debug.LogError(" Firebase Auth failed: " + authTask.Exception?.Flatten().Message);
             }
         });
     }
@@ -138,7 +147,7 @@ public class UserManager : MonoBehaviour
                     SelectedDP = snapshot.GetValue<int>("selectedDP");
                     Caps = snapshot.GetValue<List<bool>>("caps");
 
-                    Debug.Log("User data loaded from Firestore.");
+                    Debug.Log("✅ User data loaded from Firestore.");
                 }
                 else
                 {
@@ -163,7 +172,7 @@ public class UserManager : MonoBehaviour
                     {
                         if (setTask.IsCompleted)
                         {
-                            Debug.Log("New user created in Firestore.");
+                            Debug.Log("🆕 New user created in Firestore.");
 
                             Username = (string)newUser["username"];
                             Wins = 0;
@@ -174,8 +183,16 @@ public class UserManager : MonoBehaviour
                             SelectedDP = 0;
                             Caps = capsList;
                         }
+                        else
+                        {
+                            Debug.LogError(" Failed to create user document: " + setTask.Exception?.Flatten().Message);
+                        }
                     });
                 }
+            }
+            else
+            {
+                Debug.LogError(" Failed to retrieve user document: " + task.Exception?.Flatten().Message);
             }
         });
     }
@@ -191,11 +208,11 @@ public class UserManager : MonoBehaviour
         {
             if (t.IsCompleted)
             {
-                Debug.Log($"Field '{key}' updated.");
+                Debug.Log($" Field '{key}' updated.");
             }
             else
             {
-                Debug.LogError("Failed to update field: " + t.Exception?.Flatten().Message);
+                Debug.LogError($" Failed to update field '{key}': " + t.Exception?.Flatten().Message);
             }
         });
     }
@@ -205,6 +222,12 @@ public class UserManager : MonoBehaviour
         GoogleSignIn.DefaultInstance.SignOut();
         auth.SignOut();
         firebaseUser = null;
-        Debug.Log("Signed out.");
+        Debug.Log(" Signed out.");
+    }
+
+    // Optional: manual trigger for UI button
+    public void ManualSignIn()
+    {
+        GoogleSignIn.DefaultInstance.SignIn().ContinueWith(OnGoogleSignInFinished);
     }
 }
