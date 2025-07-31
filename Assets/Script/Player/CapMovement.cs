@@ -25,6 +25,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
     private bool isTouchingBoxLine = false; // Tracks if cap is currently touching a "BoxLine"
     private bool hasResetThisFlick = false; // Prevents multiple resets in one flick
     private bool collidedWithCap = false; // Tracks if cap collided with another cap
+    private int opponentHitActor = -1; // Tracks the actor number of opponent cap hit
 
     private Rigidbody2D rb;
     private bool isDragging = false;
@@ -77,10 +78,12 @@ public class CapMovement : MonoBehaviourPunCallbacks
             rb.velocity = Vector2.zero;
             isTouchingBoxLine = false; // Reset line collision state on new flick
             collidedWithCap = false; // Reset cap collision state on new flick
+            opponentHitActor = -1; // Reset opponent hit tracking
             hasResetThisFlick = false; // Reset flag on new flick
 
             if (powerArrowSprite != null)
                 powerArrowSprite.gameObject.SetActive(true);
+            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} started flick, resetting opponentHitActor");
         }
 
         if (Input.GetMouseButton(0) && isDragging)
@@ -116,6 +119,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
 
             // Start checking if all caps have stopped to end the turn
             InvokeRepeating("CheckAllCapsStopped", 0.5f, 0.1f);
+            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} flicked cap with velocity {flick}");
         }
     }
 
@@ -139,12 +143,40 @@ public class CapMovement : MonoBehaviourPunCallbacks
         if (allStopped)
         {
             CancelInvoke("CheckAllCapsStopped");
-            Debug.Log($"CheckAllCapsStopped: currentBox={currentBox}, currentBoxEntered={currentBoxEntered}, hasWon={hasWon}, isTouchingBoxLine={isTouchingBoxLine}, collidedWithCap={collidedWithCap}, position={transform.position}, capCount={caps.Length}");
+
+            // Log state of all caps
+            foreach (GameObject cap in caps)
+            {
+                CapMovement capMovement = cap.GetComponent<CapMovement>();
+                if (capMovement != null)
+                {
+                    Debug.Log($"Cap state: owner={capMovement.photonView.Owner?.ActorNumber}, position={cap.transform.position}, currentBox={capMovement.currentBox}, currentBoxEntered={capMovement.currentBoxEntered}, isTouchingBoxLine={capMovement.isTouchingBoxLine}");
+                }
+            }
+            Debug.Log($"CheckAllCapsStopped: currentBox={currentBox}, currentBoxEntered={currentBoxEntered}, hasWon={hasWon}, isTouchingBoxLine={isTouchingBoxLine}, collidedWithCap={collidedWithCap}, opponentHitActor={opponentHitActor}, position={transform.position}, capCount={caps.Length}");
 
             // Apply game rules only when all caps have stopped
             if (!hasWon)
             {
-                if (collidedWithCap && currentBox == 1)
+                // Check if opponent cap landed in their correct box
+                bool opponentInCorrectBox = CheckOpponentCapInCorrectBox();
+                if (opponentInCorrectBox)
+                {
+                    // Rule: Hit an opponent's cap into their correct box, advance current turn player 2 boxes
+                    int currentTurnPlayer = GetCurrentTurnPlayer();
+                    if (currentTurnPlayer != -1)
+                    {
+                        Debug.Log($"Player {currentTurnPlayer} hit opponent {opponentHitActor}'s cap into their correct box, advancing 2 boxes");
+                        FindAndAdvancePlayerCap(currentTurnPlayer, 2);
+                    }
+                    else
+                    {
+                        Debug.LogError("Failed to get current turn player for opponent box rule");
+                    }
+                }
+
+                // Existing rules (only apply if not already advanced)
+                if (!opponentInCorrectBox && collidedWithCap && currentBox == 1)
                 {
                     // Rule: Hit another cap while on box 1, reset progress
                     Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} hit another cap while on box 1, resetting position and progress");
@@ -183,40 +215,54 @@ public class CapMovement : MonoBehaviourPunCallbacks
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        if (!photonView.IsMine || hasWon) return;
+        // Update box state for all caps, not just local player's
+        if (hasWon) return;
 
-        // Set the current box the cap is in
         if (other.CompareTag("BoardBox") && int.TryParse(other.gameObject.name, out int boxNumber))
         {
             currentBoxEntered = boxNumber;
-            Debug.Log($"Cap entered box {boxNumber}, current target: {currentBox}, position: {transform.position}, bounds: {other.bounds}");
+            Debug.Log($"Cap entered box {boxNumber}, current target: {currentBox}, position: {transform.position}, bounds: {other.bounds}, owner: {photonView.Owner?.ActorNumber}");
         }
-        // Track if cap is touching a BoxLine
         else if (other.CompareTag("BoxLine"))
         {
             isTouchingBoxLine = true;
-            Debug.Log($"Cap entered BoxLine at position: {transform.position}");
+            Debug.Log($"Cap entered BoxLine at position: {transform.position}, owner: {photonView.Owner?.ActorNumber}");
+        }
+    }
+
+    void OnTriggerStay2D(Collider2D other)
+    {
+        // Ensure box state persists while cap is in the box
+        if (hasWon) return;
+
+        if (other.CompareTag("BoardBox") && int.TryParse(other.gameObject.name, out int boxNumber))
+        {
+            currentBoxEntered = boxNumber;
+            Debug.Log($"Cap staying in box {boxNumber}, current target: {currentBox}, position: {transform.position}, bounds: {other.bounds}, owner: {photonView.Owner?.ActorNumber}");
+        }
+        else if (other.CompareTag("BoxLine"))
+        {
+            isTouchingBoxLine = true;
+            Debug.Log($"Cap staying in BoxLine at position: {transform.position}, owner: {photonView.Owner?.ActorNumber}");
         }
     }
 
     void OnTriggerExit2D(Collider2D other)
     {
-        if (!photonView.IsMine || hasWon) return;
+        if (hasWon) return;
 
-        // Clear currentBoxEntered if the cap exits the box
         if (other.CompareTag("BoardBox") && int.TryParse(other.gameObject.name, out int boxNumber))
         {
             if (boxNumber == currentBoxEntered)
             {
-                Debug.Log($"Cap exited box {boxNumber}, position: {transform.position}, velocity: {rb.velocity.magnitude}");
+                Debug.Log($"Cap exited box {boxNumber}, position: {transform.position}, velocity: {rb.velocity.magnitude}, owner: {photonView.Owner?.ActorNumber}");
                 currentBoxEntered = 0;
             }
         }
-        // Clear isTouchingBoxLine if the cap exits the BoxLine
         else if (other.CompareTag("BoxLine"))
         {
             isTouchingBoxLine = false;
-            Debug.Log($"Cap exited BoxLine at position: {transform.position}");
+            Debug.Log($"Cap exited BoxLine at position: {transform.position}, owner: {photonView.Owner?.ActorNumber}");
         }
     }
 
@@ -224,11 +270,100 @@ public class CapMovement : MonoBehaviourPunCallbacks
     {
         if (!photonView.IsMine || hasWon || hasResetThisFlick || !TurnManager.Instance.IsMyTurn()) return;
 
-        // Track collision with another cap
         if (collision.gameObject.CompareTag("BottleCap"))
         {
             collidedWithCap = true;
-            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} collided with another cap at position: {transform.position}");
+            CapMovement opponentCap = collision.gameObject.GetComponent<CapMovement>();
+            if (opponentCap != null && opponentCap.photonView != null && opponentCap.photonView.Owner != null)
+            {
+                int opponentActorNumber = opponentCap.photonView.Owner.ActorNumber;
+                int currentTurnPlayer = GetCurrentTurnPlayer();
+                if (opponentActorNumber != currentTurnPlayer)
+                {
+                    opponentHitActor = opponentActorNumber;
+                    Debug.Log($"Player {currentTurnPlayer} collided with opponent {opponentHitActor}'s cap at position: {transform.position}. Will check if it landed in box {opponentCap.currentBox}");
+                }
+                else
+                {
+                    Debug.Log($"Player {currentTurnPlayer} collided with own cap, ignoring for opponent rule");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"Opponent cap has invalid CapMovement or PhotonView: {collision.gameObject.name}");
+            }
+        }
+    }
+
+    private bool CheckOpponentCapInCorrectBox()
+    {
+        if (opponentHitActor == -1) return false;
+
+        GameObject[] caps = GameObject.FindGameObjectsWithTag("BottleCap");
+        foreach (GameObject cap in caps)
+        {
+            CapMovement capMovement = cap.GetComponent<CapMovement>();
+            if (capMovement != null && capMovement.photonView != null && capMovement.photonView.Owner != null)
+            {
+                if (capMovement.photonView.Owner.ActorNumber == opponentHitActor)
+                {
+                    bool inCorrectBox = capMovement.currentBoxEntered == capMovement.currentBox && capMovement.currentBoxEntered != 0;
+                    Debug.Log($"Checking opponent {opponentHitActor}'s cap: currentBox={capMovement.currentBox}, currentBoxEntered={capMovement.currentBoxEntered}, inCorrectBox={inCorrectBox}, position={cap.transform.position}, velocity={capMovement.rb.velocity.magnitude}");
+                    if (inCorrectBox)
+                    {
+                        // Advance opponent if they landed in their correct box
+                        int boxesToAdvance = capMovement.isTouchingBoxLine ? 1 : 3;
+                        capMovement.photonView.RPC("RPC_AdvanceBox", RpcTarget.All, opponentHitActor, boxesToAdvance);
+                        Debug.Log($"Opponent {opponentHitActor} landed in their correct box {capMovement.currentBox}, advancing {boxesToAdvance} box(es)");
+                        return true;
+                    }
+                    return false;
+                }
+            }
+        }
+        Debug.Log($"No cap found for opponent {opponentHitActor}");
+        return false;
+    }
+
+    private int GetCurrentTurnPlayer()
+    {
+        if (PhotonNetwork.CurrentRoom == null)
+        {
+            Debug.LogError("CurrentRoom is null, cannot get turn player");
+            return -1;
+        }
+        if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TurnManager.TURN_KEY, out object turnObj))
+        {
+            int turnPlayer = (int)turnObj;
+            Debug.Log($"Current turn player: {turnPlayer}");
+            return turnPlayer;
+        }
+        Debug.LogError("TURN_KEY not found in room properties");
+        return -1;
+    }
+
+    private void FindAndAdvancePlayerCap(int actorNumber, int boxesToAdvance)
+    {
+        GameObject[] caps = GameObject.FindGameObjectsWithTag("BottleCap");
+        foreach (GameObject cap in caps)
+        {
+            CapMovement capMovement = cap.GetComponent<CapMovement>();
+            if (capMovement != null && capMovement.photonView != null && capMovement.photonView.Owner != null)
+            {
+                if (capMovement.photonView.Owner.ActorNumber == actorNumber)
+                {
+                    if (!capMovement.hasWon)
+                    {
+                        capMovement.photonView.RPC("RPC_AdvanceBox", RpcTarget.All, actorNumber, boxesToAdvance);
+                        Debug.Log($"Advancing cap for player {actorNumber} by {boxesToAdvance} boxes to box {capMovement.currentBox + boxesToAdvance}");
+                        break; // Advance only one cap per player
+                    }
+                    else
+                    {
+                        Debug.Log($"Player {actorNumber}'s cap has already won, skipping advancement");
+                    }
+                }
+            }
         }
     }
 
@@ -242,7 +377,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
             currentBox += boxesToAdvance;
             if (currentBox > maxBox)
             {
-                // If advancing past 13, wrap around to 1 and check for win
                 currentBox = currentBox % maxBox;
                 if (currentBox == 1)
                 {
@@ -268,12 +402,10 @@ public class CapMovement : MonoBehaviourPunCallbacks
     {
         if (photonView.Owner.ActorNumber != actorNumber) return;
 
-        // Reset box and win state
         currentBox = 1;
         hasWon = false;
         UpdateTargetBoxText();
 
-        // Reset position to spawn point
         int spawnIndex = GetSpawnIndex();
         if (GameManager.Instance == null || GameManager.Instance.spawnPoints == null || GameManager.Instance.spawnPoints.Length == 0)
         {
@@ -289,7 +421,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
         else
         {
             Debug.LogError($"Invalid spawn point index {spawnIndex} for player {actorNumber}. Available spawn points: {GameManager.Instance.spawnPoints.Length}");
-            // Fallback: Move to origin or first valid spawn point
             transform.position = GameManager.Instance.spawnPoints.Length > 0 ? GameManager.Instance.spawnPoints[0].position : Vector3.zero;
             rb.velocity = Vector2.zero;
             Debug.LogWarning($"Player {actorNumber} moved to fallback position {transform.position}");
@@ -300,7 +431,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
     private void RPC_AnnounceWinner(int actorNumber)
     {
         Debug.Log($"Player {actorNumber} has won by completing Around the World!");
-        // Optionally, trigger game end logic here (e.g., display win screen)
+        // Optionally, trigger game end logic here
     }
 
     private void UpdateTargetBoxText()
@@ -351,7 +482,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
             spawnIndex = actorNumber % spawnPointCount;
         }
 
-        // Ensure spawnIndex is within bounds
         if (spawnIndex >= spawnPointCount)
         {
             Debug.LogWarning($"Spawn index {spawnIndex} out of bounds for player {actorNumber}. Using modulo: {spawnIndex % spawnPointCount}");

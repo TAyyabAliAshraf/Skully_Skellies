@@ -85,6 +85,10 @@ MonoBehaviour:
   - RPC_NotifyGameStalled
   - RPC_SetTurn
   - RPC_DecrementSkellyTurn
+  - RPC_DecrementStuckTurns
+  - RPC_EnterSkellyBox
+  - RPC_KnockedOut
+  - RPC_ExitSkellyBox
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1

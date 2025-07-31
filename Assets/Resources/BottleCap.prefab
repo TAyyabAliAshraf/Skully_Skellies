@@ -365,13 +365,14 @@ MonoBehaviour:
   flickPower: 5
   maxDragDistance: 3
   minVelocity: 1
-  collisionForce: 3
   arrowContainer: {fileID: 9214329828489943736}
   powerArrowSprite: {fileID: 0}
   arrowDistance: 1
   teamColors: []
   targetBoxText: {fileID: 8916379745096943225}
   currentBox: 1
+  turnsInSkellyBox: 0
+  currentSkellyBox: 0
 --- !u!114 &1743020158379796184
 MonoBehaviour:
   m_ObjectHideFlags: 0
