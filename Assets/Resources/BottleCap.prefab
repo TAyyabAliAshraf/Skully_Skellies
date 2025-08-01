@@ -371,8 +371,6 @@ MonoBehaviour:
   teamColors: []
   targetBoxText: {fileID: 8916379745096943225}
   currentBox: 1
-  turnsInSkellyBox: 0
-  currentSkellyBox: 0
 --- !u!114 &1743020158379796184
 MonoBehaviour:
   m_ObjectHideFlags: 0

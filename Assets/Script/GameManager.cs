@@ -205,6 +205,18 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
     }
 
+
+    [PunRPC]
+    private void RPC_ApplyTurnPenalty(int actorNumber, int penaltyTurns)
+    {
+        if (TurnManager.Instance == null)
+        {
+            Debug.LogError("RPC_ApplyTurnPenalty: TurnManager.Instance is null");
+            return;
+        }
+        TurnManager.Instance.playerTurnPenalties[actorNumber] = penaltyTurns;
+        Debug.Log($"GameManager: Synchronized penalty of {penaltyTurns} turns for player {actorNumber}");
+    }
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
         base.OnPlayerLeftRoom(otherPlayer);

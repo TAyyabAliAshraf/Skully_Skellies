@@ -89,6 +89,11 @@ MonoBehaviour:
   - RPC_EnterSkellyBox
   - RPC_KnockedOut
   - RPC_ExitSkellyBox
+  - RPC_SetJustEnteredSkellyBox
+  - RPC_EndTurnReceived
+  - RPC_KnockOutOfSkellyBox
+  - RPC_UpdateSkellyTurnsRemaining
+  - RPC_ApplyTurnPenalty
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 1

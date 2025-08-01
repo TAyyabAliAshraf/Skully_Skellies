@@ -7,10 +7,10 @@ using System.Collections.Generic;
 
 public class TurnManager : MonoBehaviourPunCallbacks
 {
-    public static TurnManager Instance;
+    public static TurnManager Instance; 
     public const string TURN_KEY = "TurnPlayer";
     public const string TEAM_KEY = "PlayerTeam";
-    private HashSet<int> lostTurnPlayers = new HashSet<int>(); // Tracks players who lost their turn
+    public Dictionary<int, int> playerTurnPenalties = new Dictionary<int, int>(); // Tracks players and their turn penalty count
 
     void Awake()
     {
@@ -27,7 +27,11 @@ public class TurnManager : MonoBehaviourPunCallbacks
 
     public int GetPlayerTeam(Player player)
     {
-        if (player == null) return 0;
+        if (player == null)
+        {
+            Debug.LogError("GetPlayerTeam: Player is null");
+            return 0;
+        }
 
         if (player.CustomProperties.TryGetValue(TEAM_KEY, out object teamObj))
         {
@@ -38,7 +42,11 @@ public class TurnManager : MonoBehaviourPunCallbacks
 
     public void StartTurnSystem()
     {
-        if (PhotonNetwork.CurrentRoom == null) return;
+        if (PhotonNetwork.CurrentRoom == null)
+        {
+            Debug.LogError("StartTurnSystem: CurrentRoom is null");
+            return;
+        }
 
         if (MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo)
         {
@@ -51,7 +59,7 @@ public class TurnManager : MonoBehaviourPunCallbacks
             var firstPlayer = PhotonNetwork.PlayerList.OrderBy(p => p.ActorNumber).FirstOrDefault();
             if (firstPlayer != null)
             {
-                SetTurn(firstPlayer.ActorNumber); // Set turn to first player
+                SetTurn(firstPlayer.ActorNumber);
                 Debug.Log($"Initialized turn to player {firstPlayer.ActorNumber}");
             }
             else
@@ -76,7 +84,10 @@ public class TurnManager : MonoBehaviourPunCallbacks
     public bool IsMyTurn()
     {
         if (PhotonNetwork.CurrentRoom == null || PhotonNetwork.LocalPlayer == null)
+        {
+            Debug.LogWarning("IsMyTurn: CurrentRoom or LocalPlayer is null");
             return false;
+        }
 
         if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TURN_KEY, out object turnObj))
         {
@@ -87,7 +98,11 @@ public class TurnManager : MonoBehaviourPunCallbacks
 
     private void SetTurn(int actorNumber)
     {
-        if (!PhotonNetwork.IsMasterClient || PhotonNetwork.CurrentRoom == null) return;
+        if (!PhotonNetwork.IsMasterClient || PhotonNetwork.CurrentRoom == null)
+        {
+            Debug.LogWarning("SetTurn: Not master client or CurrentRoom is null");
+            return;
+        }
 
         Debug.Log($"Setting turn to player {actorNumber} (Current players: {string.Join(",", PhotonNetwork.PlayerList.Select(p => p.ActorNumber))})");
 
@@ -113,7 +128,11 @@ public class TurnManager : MonoBehaviourPunCallbacks
 
     public void EndTurn()
     {
-        if (!PhotonNetwork.IsMasterClient) return;
+        if (!PhotonNetwork.IsMasterClient)
+        {
+            Debug.LogWarning("EndTurn: Only master client can end turn");
+            return;
+        }
 
         Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} ending turn");
 
@@ -126,11 +145,10 @@ public class TurnManager : MonoBehaviourPunCallbacks
             int currentIndex = players.FindIndex(p => p.ActorNumber == currentTurn);
             int nextIndex = players.FindIndex(p => p.ActorNumber == nextTurn);
 
-            if (nextIndex <= currentIndex && players.Count > 1) // End of cycle
+            if (nextIndex <= currentIndex && players.Count > 1)
             {
                 GameManager.Instance.ResetSpawnedPlayers();
-                lostTurnPlayers.Clear(); // Clear lost turns at end of cycle
-                Debug.Log("Full turn cycle completed, resetting spawnedPlayers and lostTurnPlayers.");
+                Debug.Log("Full turn cycle completed, resetting spawnedPlayers.");
             }
 
             SetTurn(nextTurn);
@@ -146,7 +164,7 @@ public class TurnManager : MonoBehaviourPunCallbacks
         var players = PhotonNetwork.PlayerList.OrderBy(p => p.ActorNumber).ToList();
         if (players.Count == 0)
         {
-            Debug.LogError("No players in the room!");
+            Debug.LogError("GetNextPlayer: No players in the room!");
             return -1;
         }
 
@@ -166,7 +184,7 @@ public class TurnManager : MonoBehaviourPunCallbacks
             return players[0].ActorNumber;
         }
 
-        // Find the next player, skipping those who lost their turn
+        // Find the next player, skipping those with remaining penalties
         int nextIndex = currentIndex;
         int attempts = 0;
         do
@@ -174,22 +192,72 @@ public class TurnManager : MonoBehaviourPunCallbacks
             nextIndex = (nextIndex + 1) % players.Count;
             int nextPlayer = players[nextIndex].ActorNumber;
             attempts++;
-            if (!lostTurnPlayers.Contains(nextPlayer))
+
+            // Check if player has a penalty
+            if (!playerTurnPenalties.ContainsKey(nextPlayer) || playerTurnPenalties[nextPlayer] == 0)
             {
-                Debug.Log($"Current turn: {currentTurn}, Next turn: {nextPlayer}");
+                Debug.Log($"GetNextPlayer: Current turn: {currentTurn}, Next turn: {nextPlayer}");
                 return nextPlayer;
             }
-            Debug.Log($"Skipping player {nextPlayer} due to lost turn");
-        } while (attempts < players.Count);
+            else
+            {
+                // Decrement penalty
+                playerTurnPenalties[nextPlayer]--;
+                Debug.Log($"Skipping player {nextPlayer} (remaining penalty: {playerTurnPenalties[nextPlayer]} turns)");
+                if (playerTurnPenalties[nextPlayer] == 0)
+                {
+                    playerTurnPenalties.Remove(nextPlayer);
+                    Debug.Log($"Player {nextPlayer} penalty cleared");
+                }
+            }
+        } while (attempts < players.Count * 2); // Prevent infinite loops
 
-        Debug.LogWarning("All players have lost their turn, falling back to first player.");
-        return players[0].ActorNumber;
+        // If all players have penalties, reduce all penalties by 1 and try again
+        Debug.LogWarning("All players have penalties. Reducing all penalties by 1 and retrying.");
+        foreach (var player in playerTurnPenalties.Keys.ToList())
+        {
+            playerTurnPenalties[player]--;
+            if (playerTurnPenalties[player] == 0)
+            {
+                playerTurnPenalties.Remove(player);
+            }
+        }
+        return players[0].ActorNumber; // Fallback to first player
     }
 
-    public void MarkPlayerLostTurn(int actorNumber)
+    public void ApplyTurnPenalty(int actorNumber, int penaltyTurns)
     {
-        lostTurnPlayers.Add(actorNumber);
-        Debug.Log($"Player {actorNumber} added to lostTurnPlayers");
+        if (!PhotonNetwork.IsMasterClient)
+        {
+            Debug.LogWarning("ApplyTurnPenalty: Only master client can apply penalties");
+            return;
+        }
+
+        if (penaltyTurns <= 0)
+        {
+            Debug.LogWarning($"Invalid penalty turns {penaltyTurns} for player {actorNumber}. Ignoring.");
+            return;
+        }
+
+        playerTurnPenalties[actorNumber] = penaltyTurns;
+        Debug.Log($"ApplyTurnPenalty: Player {actorNumber} assigned penalty of {penaltyTurns} turns.");
+
+        // Synchronize penalty across all clients
+        if (GameManager.Instance != null && GameManager.Instance.photonView != null)
+        {
+            GameManager.Instance.photonView.RPC("RPC_ApplyTurnPenalty", RpcTarget.All, actorNumber, penaltyTurns);
+        }
+        else
+        {
+            Debug.LogError("ApplyTurnPenalty: GameManager or its PhotonView is null");
+        }
+
+        // If the penalized player is the current turn, advance to the next player
+        if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TURN_KEY, out object turnObj) && (int)turnObj == actorNumber)
+        {
+            Debug.Log($"Player {actorNumber} penalized during their turn. Scheduling turn advancement.");
+            Invoke("EndTurn", 0.1f); // Delay to ensure penalty syncs
+        }
     }
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
@@ -197,8 +265,9 @@ public class TurnManager : MonoBehaviourPunCallbacks
         base.OnPlayerLeftRoom(otherPlayer);
         if (PhotonNetwork.IsMasterClient)
         {
-            // Remove from lostTurnPlayers if player leaves
-            lostTurnPlayers.Remove(otherPlayer.ActorNumber);
+            // Remove from playerTurnPenalties if player leaves
+            playerTurnPenalties.Remove(otherPlayer.ActorNumber);
+            Debug.Log($"Player {otherPlayer.ActorNumber} left, removed from penalties");
             // If the current turn player left, advance to the next player
             if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(TURN_KEY, out object turnObj) && (int)turnObj == otherPlayer.ActorNumber)
             {
@@ -207,4 +276,5 @@ public class TurnManager : MonoBehaviourPunCallbacks
             }
         }
     }
+
 }

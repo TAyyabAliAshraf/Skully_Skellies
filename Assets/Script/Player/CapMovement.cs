@@ -5,10 +5,7 @@ using TMPro;
 [RequireComponent(typeof(Rigidbody2D), typeof(Collider2D), typeof(PhotonView))]
 public class CapMovement : MonoBehaviourPunCallbacks
 {
-    [Header("Settings")]
-    public float flickPower = 5f;
-    public float maxDragDistance = 3f;
-    public float minVelocity = 1f;
+    [Header("Settings")] public float flickPower = 5f; public float maxDragDistance = 3f; public float minVelocity = 1f;
 
     [Header("Visuals")]
     public Transform arrowContainer;
@@ -18,14 +15,15 @@ public class CapMovement : MonoBehaviourPunCallbacks
     public TextMeshProUGUI targetBoxText;
 
     [Header("Around the World")]
-    public int currentBox = 1; // Tracks the current box (1 to 13, then 1 for win)
-    private readonly int maxBox = 13; // Maximum box number
-    private bool hasWon = false; // Tracks if the player has won
-    private int currentBoxEntered = 0; // Tracks the box the cap is currently in
-    private bool isTouchingBoxLine = false; // Tracks if cap is currently touching a "BoxLine"
-    private bool hasResetThisFlick = false; // Prevents multiple resets in one flick
-    private bool collidedWithCap = false; // Tracks if cap collided with another cap
-    private int opponentHitActor = -1; // Tracks the actor number of opponent cap hit
+    public int currentBox = 1;
+    private readonly int maxBox = 13;
+    private bool hasWon = false;
+    private int currentBoxEntered = 0;
+    private bool isTouchingBoxLine = false;
+    private bool hasResetThisFlick = false;
+    private bool collidedWithCap = false;
+    private int opponentHitActor = -1;
+    private bool hasAppliedPenaltyThisTurn = false;
 
     private Rigidbody2D rb;
     private bool isDragging = false;
@@ -50,7 +48,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
 
     void Start()
     {
-        if (MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo)
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo)
         {
             int team = TurnManager.Instance.GetPlayerTeam(photonView.Owner);
             if (team > 0 && team <= teamColors.Length)
@@ -76,14 +74,12 @@ public class CapMovement : MonoBehaviourPunCallbacks
             dragStartPos = worldMousePos;
             isDragging = true;
             rb.velocity = Vector2.zero;
-            isTouchingBoxLine = false; // Reset line collision state on new flick
-            collidedWithCap = false; // Reset cap collision state on new flick
-            opponentHitActor = -1; // Reset opponent hit tracking
-            hasResetThisFlick = false; // Reset flag on new flick
-
-            if (powerArrowSprite != null)
-                powerArrowSprite.gameObject.SetActive(true);
-            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} started flick, resetting opponentHitActor");
+            isTouchingBoxLine = false;
+            collidedWithCap = false;
+            opponentHitActor = -1;
+            hasResetThisFlick = false;
+            hasAppliedPenaltyThisTurn = false;
+            Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} started flick, resetting states");
         }
 
         if (Input.GetMouseButton(0) && isDragging)
@@ -117,7 +113,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
             if (powerArrowSprite != null)
                 powerArrowSprite.gameObject.SetActive(false);
 
-            // Start checking if all caps have stopped to end the turn
             InvokeRepeating("CheckAllCapsStopped", 0.5f, 0.1f);
             Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} flicked cap with velocity {flick}");
         }
@@ -127,7 +122,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
     {
         if (!photonView.IsMine) return;
 
-        // Check if all bottle caps have stopped (velocity < 0.1f)
         GameObject[] caps = GameObject.FindGameObjectsWithTag("BottleCap");
         bool allStopped = true;
         foreach (GameObject cap in caps)
@@ -144,7 +138,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
         {
             CancelInvoke("CheckAllCapsStopped");
 
-            // Log state of all caps
             foreach (GameObject cap in caps)
             {
                 CapMovement capMovement = cap.GetComponent<CapMovement>();
@@ -155,14 +148,11 @@ public class CapMovement : MonoBehaviourPunCallbacks
             }
             Debug.Log($"CheckAllCapsStopped: currentBox={currentBox}, currentBoxEntered={currentBoxEntered}, hasWon={hasWon}, isTouchingBoxLine={isTouchingBoxLine}, collidedWithCap={collidedWithCap}, opponentHitActor={opponentHitActor}, position={transform.position}, capCount={caps.Length}");
 
-            // Apply game rules only when all caps have stopped
             if (!hasWon)
             {
-                // Check if opponent cap landed in their correct box
                 bool opponentInCorrectBox = CheckOpponentCapInCorrectBox();
                 if (opponentInCorrectBox)
                 {
-                    // Rule: Hit an opponent's cap into their correct box, advance current turn player 2 boxes
                     int currentTurnPlayer = GetCurrentTurnPlayer();
                     if (currentTurnPlayer != -1)
                     {
@@ -175,31 +165,37 @@ public class CapMovement : MonoBehaviourPunCallbacks
                     }
                 }
 
-                // Existing rules (only apply if not already advanced)
-                if (!opponentInCorrectBox && collidedWithCap && currentBox == 1)
+                // New Rule: If Player 1 hit Player 2's cap into a SkellyBox, apply penalty to Player 2
+                bool opponentInSkellyBox = CheckOpponentCapInSkellyBox();
+                if (opponentInSkellyBox)
                 {
-                    // Rule: Hit another cap while on box 1, reset progress
+                    // Penalty applied in CheckOpponentCapInSkellyBox
+                    Debug.Log($"Player {opponentHitActor}'s cap landed in a SkellyBox, penalty applied");
+                }
+
+                if (!opponentInCorrectBox && !opponentInSkellyBox && collidedWithCap && currentBox == 1)
+                {
                     Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} hit another cap while on box 1, resetting position and progress");
                     photonView.RPC("RPC_ResetProgress", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber);
                 }
                 else if (currentBoxEntered == currentBox)
                 {
-                    // Rule: Landed in the correct box
-                    int boxesToAdvance = isTouchingBoxLine ? 1 : 3; // Advance 3 boxes if not touching a line, else 1
+                    int boxesToAdvance = isTouchingBoxLine ? 1 : 3;
                     Debug.Log($"Advancing {boxesToAdvance} box(es) for player {PhotonNetwork.LocalPlayer.ActorNumber} from box {currentBox}");
                     photonView.RPC("RPC_AdvanceBox", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber, boxesToAdvance);
-                    currentBoxEntered = 0; // Reset after advancing
+                    currentBoxEntered = 0;
                 }
-                else if (currentBoxEntered != 0)
+                else if (currentBoxEntered != 0 && !hasAppliedPenaltyThisTurn)
                 {
-                    // Rule: Landed in wrong box, lose next turn
-                    Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} landed in wrong box {currentBoxEntered} (target: {currentBox}), losing next turn");
-                    photonView.RPC("RPC_LoseTurn", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber);
-                    currentBoxEntered = 0; // Reset after checking
+                    int penaltyTurns = 1;
+                    Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} landed in wrong box {currentBoxEntered} (target: {currentBox}), applying penalty of {penaltyTurns} turn");
+                    photonView.RPC("RPC_ApplyTurnPenalty", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber, penaltyTurns);
+                    hasAppliedPenaltyThisTurn = true;
+                    currentBoxEntered = 0;
                 }
                 else
                 {
-                    currentBoxEntered = 0; // Reset if not advancing
+                    currentBoxEntered = 0;
                 }
             }
 
@@ -213,15 +209,79 @@ public class CapMovement : MonoBehaviourPunCallbacks
         }
     }
 
+    private bool CheckOpponentCapInSkellyBox()
+    {
+        if (opponentHitActor == -1 || !collidedWithCap) return false;
+
+        GameObject[] caps = GameObject.FindGameObjectsWithTag("BottleCap");
+        foreach (GameObject cap in caps)
+        {
+            CapMovement capMovement = cap.GetComponent<CapMovement>();
+            if (capMovement != null && capMovement.photonView != null && capMovement.photonView.Owner != null)
+            {
+                if (capMovement.photonView.Owner.ActorNumber == opponentHitActor)
+                {
+                    if (capMovement.currentBoxEntered != 0)
+                    {
+                        GameObject skellyBox = GameObject.Find($"SkellyBox{capMovement.currentBoxEntered}");
+                        if (skellyBox != null && skellyBox.CompareTag("SkellyBox"))
+                        {
+                            string boxName = skellyBox.name;
+                            if (int.TryParse(boxName.Replace("SkellyBox", ""), out int skellyBoxNumber))
+                            {
+                                if (!capMovement.hasAppliedPenaltyThisTurn)
+                                {
+                                    Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} hit opponent {opponentHitActor}'s cap into SkellyBox {skellyBoxNumber}, applying penalty of {skellyBoxNumber} turns");
+                                    capMovement.photonView.RPC("RPC_ApplyTurnPenalty", RpcTarget.All, opponentHitActor, skellyBoxNumber);
+                                    capMovement.hasAppliedPenaltyThisTurn = true;
+                                    return true;
+                                }
+                                else
+                                {
+                                    Debug.Log($"Opponent {opponentHitActor} already has a penalty this turn, skipping SkellyBox penalty");
+                                }
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"Failed to parse SkellyBox number from name: {boxName}");
+                            }
+                        }
+                    }
+                    return false;
+                }
+            }
+        }
+        Debug.Log($"No cap found for opponent {opponentHitActor}");
+        return false;
+    }
+
     void OnTriggerEnter2D(Collider2D other)
     {
-        // Update box state for all caps, not just local player's
-        if (hasWon) return;
+        if (hasWon || !photonView.IsMine) return;
 
         if (other.CompareTag("BoardBox") && int.TryParse(other.gameObject.name, out int boxNumber))
         {
             currentBoxEntered = boxNumber;
-            Debug.Log($"Cap entered box {boxNumber}, current target: {currentBox}, position: {transform.position}, bounds: {other.bounds}, owner: {photonView.Owner?.ActorNumber}");
+            Debug.Log($"Cap entered box {boxNumber}, current target: {currentBox}, position: {transform.position}, owner: {photonView.Owner?.ActorNumber}");
+        }
+        else if (other.CompareTag("SkellyBox"))
+        {
+            string boxName = other.gameObject.name;
+            string numberPart = boxName.Replace("SkellyBox", "");
+            if (int.TryParse(numberPart, out int skellyBoxNumber))
+            {
+                if (!hasAppliedPenaltyThisTurn)
+                {
+                    Debug.Log($"Player {PhotonNetwork.LocalPlayer.ActorNumber} entered SkellyBox {skellyBoxNumber}, applying penalty of {skellyBoxNumber} turns");
+                    photonView.RPC("RPC_ApplyTurnPenalty", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber, skellyBoxNumber);
+                    hasAppliedPenaltyThisTurn = true;
+                }
+                currentBoxEntered = skellyBoxNumber;
+            }
+            else
+            {
+                Debug.LogWarning($"Failed to parse SkellyBox number from name: {boxName}. Expected format: SkellyBoxN (e.g., SkellyBox4)");
+            }
         }
         else if (other.CompareTag("BoxLine"))
         {
@@ -232,13 +292,26 @@ public class CapMovement : MonoBehaviourPunCallbacks
 
     void OnTriggerStay2D(Collider2D other)
     {
-        // Ensure box state persists while cap is in the box
         if (hasWon) return;
 
         if (other.CompareTag("BoardBox") && int.TryParse(other.gameObject.name, out int boxNumber))
         {
             currentBoxEntered = boxNumber;
-            Debug.Log($"Cap staying in box {boxNumber}, current target: {currentBox}, position: {transform.position}, bounds: {other.bounds}, owner: {photonView.Owner?.ActorNumber}");
+            Debug.Log($"Cap staying in box {boxNumber}, current target: {currentBox}, position: {transform.position}, owner: {photonView.Owner?.ActorNumber}");
+        }
+        else if (other.CompareTag("SkellyBox"))
+        {
+            string boxName = other.gameObject.name;
+            string numberPart = boxName.Replace("SkellyBox", "");
+            if (int.TryParse(numberPart, out int skellyBoxNumber))
+            {
+                currentBoxEntered = skellyBoxNumber;
+                Debug.Log($"Cap staying in SkellyBox {skellyBoxNumber}, current target: {currentBox}, position: {transform.position}, owner: {photonView.Owner?.ActorNumber}");
+            }
+            else
+            {
+                Debug.LogWarning($"Failed to parse SkellyBox number from name: {boxName}");
+            }
         }
         else if (other.CompareTag("BoxLine"))
         {
@@ -257,6 +330,18 @@ public class CapMovement : MonoBehaviourPunCallbacks
             {
                 Debug.Log($"Cap exited box {boxNumber}, position: {transform.position}, velocity: {rb.velocity.magnitude}, owner: {photonView.Owner?.ActorNumber}");
                 currentBoxEntered = 0;
+            }
+        }
+        else if (other.CompareTag("SkellyBox"))
+        {
+            string boxName = other.gameObject.name;
+            if (int.TryParse(boxName.Replace("SkellyBox", ""), out int skellyBoxNumber))
+            {
+                if (skellyBoxNumber == currentBoxEntered)
+                {
+                    Debug.Log($"Cap exited SkellyBox {skellyBoxNumber}, position: {transform.position}, velocity: {rb.velocity.magnitude}, owner: {photonView.Owner?.ActorNumber}");
+                    currentBoxEntered = 0;
+                }
             }
         }
         else if (other.CompareTag("BoxLine"))
@@ -281,7 +366,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
                 if (opponentActorNumber != currentTurnPlayer)
                 {
                     opponentHitActor = opponentActorNumber;
-                    Debug.Log($"Player {currentTurnPlayer} collided with opponent {opponentHitActor}'s cap at position: {transform.position}. Will check if it landed in box {opponentCap.currentBox}");
+                    Debug.Log($"Player {currentTurnPlayer} collided with opponent {opponentHitActor}'s cap at position: {transform.position}");
                 }
                 else
                 {
@@ -297,7 +382,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
 
     private bool CheckOpponentCapInCorrectBox()
     {
-        if (opponentHitActor == -1) return false;
+        if (opponentHitActor == -1 || !collidedWithCap) return false;
 
         GameObject[] caps = GameObject.FindGameObjectsWithTag("BottleCap");
         foreach (GameObject cap in caps)
@@ -311,7 +396,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
                     Debug.Log($"Checking opponent {opponentHitActor}'s cap: currentBox={capMovement.currentBox}, currentBoxEntered={capMovement.currentBoxEntered}, inCorrectBox={inCorrectBox}, position={cap.transform.position}, velocity={capMovement.rb.velocity.magnitude}");
                     if (inCorrectBox)
                     {
-                        // Advance opponent if they landed in their correct box
                         int boxesToAdvance = capMovement.isTouchingBoxLine ? 1 : 3;
                         capMovement.photonView.RPC("RPC_AdvanceBox", RpcTarget.All, opponentHitActor, boxesToAdvance);
                         Debug.Log($"Opponent {opponentHitActor} landed in their correct box {capMovement.currentBox}, advancing {boxesToAdvance} box(es)");
@@ -356,7 +440,7 @@ public class CapMovement : MonoBehaviourPunCallbacks
                     {
                         capMovement.photonView.RPC("RPC_AdvanceBox", RpcTarget.All, actorNumber, boxesToAdvance);
                         Debug.Log($"Advancing cap for player {actorNumber} by {boxesToAdvance} boxes to box {capMovement.currentBox + boxesToAdvance}");
-                        break; // Advance only one cap per player
+                        break;
                     }
                     else
                     {
@@ -390,11 +474,18 @@ public class CapMovement : MonoBehaviourPunCallbacks
     }
 
     [PunRPC]
-    private void RPC_LoseTurn(int actorNumber)
+    private void RPC_ApplyTurnPenalty(int actorNumber, int penaltyTurns)
     {
         if (photonView.Owner.ActorNumber != actorNumber) return;
-        TurnManager.Instance.MarkPlayerLostTurn(actorNumber);
-        Debug.Log($"Player {actorNumber} marked as lost turn");
+        if (GameManager.Instance != null && GameManager.Instance.photonView != null)
+        {
+            GameManager.Instance.photonView.RPC("RPC_ApplyTurnPenalty", RpcTarget.All, actorNumber, penaltyTurns);
+            Debug.Log($"CapMovement: Forwarded penalty of {penaltyTurns} turns for player {actorNumber} to GameManager");
+        }
+        else
+        {
+            Debug.LogError("RPC_ApplyTurnPenalty: GameManager or its PhotonView is null");
+        }
     }
 
     [PunRPC]
@@ -431,7 +522,6 @@ public class CapMovement : MonoBehaviourPunCallbacks
     private void RPC_AnnounceWinner(int actorNumber)
     {
         Debug.Log($"Player {actorNumber} has won by completing Around the World!");
-        // Optionally, trigger game end logic here
     }
 
     private void UpdateTargetBoxText()
@@ -468,11 +558,11 @@ public class CapMovement : MonoBehaviourPunCallbacks
         }
 
         int spawnIndex;
-        if (MultiplayerManager.Instance.selectedMode == GameMode.OneVsOne)
+        if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.selectedMode == GameMode.OneVsOne)
         {
             spawnIndex = actorNumber % 2;
         }
-        else if (MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo)
+        else if (MultiplayerManager.Instance != null && MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo)
         {
             int team = TurnManager.Instance.GetPlayerTeam(PhotonNetwork.LocalPlayer);
             spawnIndex = (team - 1) * 2 + (actorNumber % 2);
@@ -493,7 +583,8 @@ public class CapMovement : MonoBehaviourPunCallbacks
             spawnIndex = 0;
         }
 
-        Debug.Log($"GetSpawnIndex for player {actorNumber}: mode={MultiplayerManager.Instance.selectedMode}, team={(MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo ? TurnManager.Instance.GetPlayerTeam(PhotonNetwork.LocalPlayer) : 0)}, spawnIndex={spawnIndex}, spawnPointCount={spawnPointCount}");
+        Debug.Log($"GetSpawnIndex for player {actorNumber}: mode={(MultiplayerManager.Instance != null ? MultiplayerManager.Instance.selectedMode : "None")}, team={(MultiplayerManager.Instance != null && MultiplayerManager.Instance.selectedMode == GameMode.TeamTwoVsTwo ? TurnManager.Instance.GetPlayerTeam(PhotonNetwork.LocalPlayer) : 0)}, spawnIndex={spawnIndex}, spawnPointCount={spawnPointCount}");
         return spawnIndex;
     }
+
 }
